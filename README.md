@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project aims to classify electrons and photons using a deep learning model based on the ResNet-15 architecture. The classification is performed on 32x32 matrices representing two channels: hit energy and time for two types of particles, electrons and photons, hitting the detector. The datasets are provided by CERN and are used for the ML4Sci organization.
+This project aims to classify electrons and photons using a deep learning model based on the ResNet-15 architecture. The classification is performed on 32x32 matrices representing two channels: hit energy and time for two types of particles, electrons and photons, hitting the detector. The datasets are provided by CERN and are used by the ML4Sci organization.
 
 ## Dataset Description
 
