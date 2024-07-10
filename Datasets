@@ -1,0 +1,7 @@
+photons_path = r"C:\Users\rohan\Downloads\SinglePhotonPt50_IMGCROPS_n249k_RHv1.hdf5"
+electrons_path = r"C:\Users\rohan\Downloads\SingleElectronPt50_IMGCROPS_n249k_RHv1.hdf5"
+
+
+link to the datasets : CERN box storage
+https://cernbox.cern.ch/index.php/s/AtBT8y4MiQYFcgc (photons)
+https://cernbox.cern.ch/index.php/s/FbXw3V4XNyYB3oA (electrons)
