@@ -21,5 +21,5 @@ Each dataset consists of 32x32 matrices with two channels: hit energy and time.
 
 ## Model Architecture
 
-The ResNet-15 architecture used in this project is a modified version of the ResNet model. Below is the architecture:
+The ResNet-15 architecture used in this project is a modified version of the ResNet model. 
 
