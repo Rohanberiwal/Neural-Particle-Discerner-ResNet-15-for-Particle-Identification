@@ -1,205 +1,229 @@
-import h5py
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset, random_split
-import torchvision.transforms as transforms
+from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
+import torchvision.transforms as transforms
+from torchvision.transforms import RandomApply, RandomChoice, RandomRotation, RandomHorizontalFlip, RandomVerticalFlip, RandomAffine, RandomGrayscale
 
-# Define paths to your HDF5 files
-photons_path = r"C:\Users\rohan\Downloads\SinglePhotonPt50_IMGCROPS_n249k_RHv1.hdf5"
-electrons_path = r"C:\Users\rohan\Downloads\SingleElectronPt50_IMGCROPS_n249k_RHv1.hdf5"
-
-# Device setup
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-torch.manual_seed(42)
-if device.type == 'cuda':
-    torch.cuda.manual_seed_all(42)
-
-# Function to print HDF5 file contents
-def print_hdf5_file_contents(file_path):
-    with h5py.File(file_path, 'r') as f:
-        print(f"File: {file_path}")
-        print("Contents:")
-        print_group_contents(f)
-
-# Recursive function to print group contents
-def print_group_contents(group, indent=0):
-    for key in group.keys():
-        if isinstance(group[key], h5py.Group):
-            print(f"{' ' * indent}Group: {key}")
-            print_group_contents(group[key], indent + 4)
-        elif isinstance(group[key], h5py.Dataset):
-            print(f"{' ' * indent}Dataset: {key} | Shape: {group[key].shape} | Dtype: {group[key].dtype}")
-        else:
-            print(f"{' ' * indent}Unknown: {key}")
-
-# Print contents of both photon and electron HDF5 files
-print_hdf5_file_contents(photons_path)
-print_hdf5_file_contents(electrons_path)
-
-class HDF5Dataset(Dataset):
-    def __init__(self, file_path, label, transform=None):
-        self.file_path = file_path
-        self.transform = transform
-        self.label = label
-
-        # Load HDF5 dataset
-        with h5py.File(self.file_path, 'r') as hf:
-            self.data = hf['X'][:]
-            self.targets = hf['y'][:].astype(int)  # Convert to integers
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        sample = self.data[idx]
-        target = self.targets[idx]
-        if self.transform:
-            sample = self.transform(sample)
-        return sample, torch.tensor(target, dtype=torch.long)  # Ensure target is torch.long
-
-# Load and preprocess data
-def load_data(photons_path, electrons_path, transform):
-    photon_dataset = HDF5Dataset(photons_path, label=0, transform=transform)
-    electron_dataset = HDF5Dataset(electrons_path, label=1, transform=transform)
+# Function to generate random matrices
+def generate_random_matrices(num_samples, img_size=32):
+    electrons_hit_energy = np.random.rand(num_samples, img_size, img_size)
+    electrons_time = np.random.rand(num_samples, img_size, img_size)
     
-    dataset = torch.utils.data.ConcatDataset([photon_dataset, electron_dataset])
+    photons_hit_energy = np.random.rand(num_samples, img_size, img_size)
+    photons_time = np.random.rand(num_samples, img_size, img_size)
     
-    train_size = int(0.8 * len(dataset))
-    test_size = len(dataset) - train_size
-    
-    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-    
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-    
-    return train_loader, test_loader
+    return electrons_hit_energy, electrons_time, photons_hit_energy, photons_time
 
-# Transformation to tensor
-transform = transforms.Compose([transforms.ToTensor()])
+# Number of datasets to generate
+num_datasets = 1000  # Reduced for demonstration
+num_samples_per_dataset = 1
 
-# Load data using defined function
-train_loader, test_loader = load_data(photons_path, electrons_path, transform)
+# Lists to store all generated matrices
+all_electrons_hit_energy = []
+all_electrons_time = []
+all_photons_hit_energy = []
+all_photons_time = []
 
-# Define ResNet-15 model
+# Generate datasets
+for _ in range(num_datasets):
+    electrons_hit_energy, electrons_time, photons_hit_energy, photons_time = generate_random_matrices(num_samples_per_dataset)
+    all_electrons_hit_energy.append(electrons_hit_energy)
+    all_electrons_time.append(electrons_time)
+    all_photons_hit_energy.append(photons_hit_energy)
+    all_photons_time.append(photons_time)
+
+# Convert lists to numpy arrays
+all_electrons_hit_energy = np.array(all_electrons_hit_energy)
+all_electrons_time = np.array(all_electrons_time)
+all_photons_hit_energy = np.array(all_photons_hit_energy)
+all_photons_time = np.array(all_photons_time)
+
+# Data division
+num_total_datasets = len(all_electrons_hit_energy)
+num_train = int(0.8 * num_total_datasets)
+num_val = int(0.1 * num_total_datasets)
+num_test = num_total_datasets - num_train - num_val
+
+# Split into training, validation, and test sets
+train_electrons_hit_energy = all_electrons_hit_energy[:num_train]
+train_electrons_time = all_electrons_time[:num_train]
+train_photons_hit_energy = all_photons_hit_energy[:num_train]
+train_photons_time = all_photons_time[:num_train]
+
+val_electrons_hit_energy = all_electrons_hit_energy[num_train:num_train+num_val]
+val_electrons_time = all_electrons_time[num_train:num_train+num_val]
+val_photons_hit_energy = all_photons_hit_energy[num_train:num_train+num_val]
+val_photons_time = all_photons_time[num_train:num_train+num_val]
+
+# Convert data to PyTorch tensors
+train_electrons_hit_energy_tensor = torch.FloatTensor(train_electrons_hit_energy)
+train_electrons_time_tensor = torch.FloatTensor(train_electrons_time)
+train_photons_hit_energy_tensor = torch.FloatTensor(train_photons_hit_energy)
+train_photons_time_tensor = torch.FloatTensor(train_photons_time)
+
+val_electrons_hit_energy_tensor = torch.FloatTensor(val_electrons_hit_energy)
+val_electrons_time_tensor = torch.FloatTensor(val_electrons_time)
+val_photons_hit_energy_tensor = torch.FloatTensor(val_photons_hit_energy)
+val_photons_time_tensor = torch.FloatTensor(val_photons_time)
+
+# Concatenate hit energy and time matrices along the channel dimension
+train_electrons_data = torch.stack((train_electrons_hit_energy_tensor, train_electrons_time_tensor), dim=1)
+train_photons_data = torch.stack((train_photons_hit_energy_tensor, train_photons_time_tensor), dim=1)
+
+val_electrons_data = torch.stack((val_electrons_hit_energy_tensor, val_electrons_time_tensor), dim=1)
+val_photons_data = torch.stack((val_photons_hit_energy_tensor, val_photons_time_tensor), dim=1)
+
+# Combine electrons and photons data into one tensor
+train_data = torch.cat((train_electrons_data, train_photons_data), dim=0)
+val_data = torch.cat((val_electrons_data, val_photons_data), dim=0)
+
+# Create labels (0 for electrons, 1 for photons)
+train_labels = torch.cat((torch.zeros(train_electrons_data.size(0)), torch.ones(train_photons_data.size(0))))
+val_labels = torch.cat((torch.zeros(val_electrons_data.size(0)), torch.ones(val_photons_data.size(0))))
+
+# Create TensorDataset and DataLoader
+train_dataset = TensorDataset(train_data, train_labels)
+val_dataset = TensorDataset(val_data, val_labels)
+
+# Define aggressive data augmentations
+transformations = transforms.Compose([
+    RandomApply([RandomChoice([
+        RandomRotation(15),
+        RandomHorizontalFlip(),
+        RandomVerticalFlip(),
+        RandomAffine(degrees=0, translate=(0.1, 0.1)),
+        RandomGrayscale(p=0.1)
+    ])], p=0.8)
+])
+
+# Apply transformations to datasets
+train_dataset.transform = transformations
+val_dataset.transform = transformations
+
+batch_size = 32
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+
 class ResNet15(nn.Module):
-    def __init__(self, num_classes=2):
+    def __init__(self):
         super(ResNet15, self).__init__()
-        self.conv1 = nn.Conv2d(2, 64, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels=2, out_channels=64, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(64, 64, 3)
-        self.layer2 = self._make_layer(64, 128, 4)
-        self.layer3 = self._make_layer(128, 256, 6)
-        self.layer4 = self._make_layer(256, 512, 3)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512, num_classes)
-
-    def _make_layer(self, in_channels, out_channels, blocks):
-        layers = []
-        layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1))
-        layers.append(nn.BatchNorm2d(out_channels))
-        layers.append(nn.ReLU(inplace=True))
-        for _ in range(1, blocks):
-            layers.append(nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1))
-            layers.append(nn.BatchNorm2d(out_channels))
-            layers.append(nn.ReLU(inplace=True))
-        return nn.Sequential(*layers)
-
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
+        
+        self.fc = nn.Linear(128 * 8 * 8, 2)  # Assuming 32x32 input size and 2 output classes
+    
     def forward(self, x):
+        # Reshape input to remove the extra dimension if present
+        if x.dim() == 5:
+            x = x.squeeze(2)  # Remove the extra dimension
+        
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
+        x = self.maxpool(x)
+        
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        
+        x = torch.flatten(x, 1)
         x = self.fc(x)
+        
         return x
 
-# Train and evaluate the model
-def train_and_evaluate(model, train_loader, test_loader, criterion, optimizer, num_epochs=10):
-    model.to(device)
-    model.train()
-    
-    train_losses = []
-    test_accuracies = []
-    
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-        for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * inputs.size(0)
-        
-        epoch_loss = running_loss / len(train_loader.dataset)
-        train_losses.append(epoch_loss)
-        
-        # Evaluate on test set
-        test_accuracy = evaluate(model, test_loader)
-        test_accuracies.append(test_accuracy)
-        
-        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {epoch_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%')
-    
-    return train_losses, test_accuracies
-
-def evaluate(model, test_loader):
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    accuracy = correct / total * 100
-    return accuracy
-
-# Define the model
+# Initialize model, criterion, and optimizer
 model = ResNet15()
-
-# Define criterion and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)  # Adding weight decay for regularization
 
-# Train the model
-train_losses, test_accuracies = train_and_evaluate(model, train_loader, test_loader, criterion, optimizer, num_epochs=10)
+# Training loop
+num_epochs = 100
+train_losses = []
+train_accuracies = []
+val_losses = []
+val_accuracies = []
 
-# Plot training loss and test accuracy
-plt.figure(figsize=(12, 5))
+for epoch in range(num_epochs):
+    train_loss = 0.0
+    train_correct = 0
+    total_train = 0
+    
+    model.train()
+    for inputs, labels in train_loader:
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels.long())
+        loss.backward()
+        optimizer.step()
+        
+        train_loss += loss.item() * inputs.size(0)
+        _, predicted = torch.max(outputs, 1)
+        train_correct += (predicted == labels).sum().item()
+        total_train += labels.size(0)
+    
+    train_loss = train_loss / total_train
+    train_accuracy = train_correct / total_train
+    
+    train_losses.append(train_loss)
+    train_accuracies.append(train_accuracy)
+    
+    # Validation
+    val_loss = 0.0
+    val_correct = 0
+    total_val = 0
+    
+    model.eval()
+    with torch.no_grad():
+        for inputs, labels in val_loader:
+            outputs = model(inputs)
+            loss = criterion(outputs, labels.long())
+            
+            val_loss += loss.item() * inputs.size(0)
+            _, predicted = torch.max(outputs, 1)
+            val_correct += (predicted == labels).sum().item()
+            total_val += labels.size(0)
+    
+    val_loss = val_loss / total_val
+    val_accuracy = val_correct / total_val
+    
+    val_losses.append(val_loss)
+    val_accuracies.append(val_accuracy)
+    
+    print(f'Epoch [{epoch + 1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
 
-# Plotting loss
-plt.subplot(1, 2, 1)
-plt.plot(range(1, len(train_losses) + 1), train_losses, label='Training Loss')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.title('Training Loss')
-plt.legend()
+# Plotting function
+def plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies):
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss', color='blue')
+    plt.plot(val_losses, label='Val Loss', color='orange')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(train_accuracies, label='Train Accuracy', color='green')
+    plt.plot(val_accuracies, label='Val Accuracy', color='red')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.show()
 
-# Plotting accuracy
-plt.subplot(1, 2, 2)
-plt.plot(range(1, len(test_accuracies) + 1), test_accuracies, label='Test Accuracy', color='orange')
-plt.xlabel('Epochs')
-plt.ylabel('Accuracy (%)')
-plt.title('Test Accuracy')
-plt.legend()
+# Plot training and validation metrics
+plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies)
 
-plt.tight_layout()
-plt.show()
-
-# Save model weights
-torch.save(model.state_dict(), 'resnet15_particle_classification.pth')
-
-
-# Save model weights
-torch.save(model.state_dict(), 'resnet15_particle_classification.pth')
