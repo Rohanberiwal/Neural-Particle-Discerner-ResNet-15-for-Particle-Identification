@@ -59,6 +59,11 @@ val_electrons_time = all_electrons_time[num_train:num_train+num_val]
 val_photons_hit_energy = all_photons_hit_energy[num_train:num_train+num_val]
 val_photons_time = all_photons_time[num_train:num_train+num_val]
 
+test_electrons_hit_energy = all_electrons_hit_energy[num_train+num_val:]
+test_electrons_time = all_electrons_time[num_train+num_val:]
+test_photons_hit_energy = all_photons_hit_energy[num_train+num_val:]
+test_photons_time = all_photons_time[num_train+num_val:]
+
 # Convert data to PyTorch tensors
 train_electrons_hit_energy_tensor = torch.FloatTensor(train_electrons_hit_energy)
 train_electrons_time_tensor = torch.FloatTensor(train_electrons_time)
@@ -70,6 +75,11 @@ val_electrons_time_tensor = torch.FloatTensor(val_electrons_time)
 val_photons_hit_energy_tensor = torch.FloatTensor(val_photons_hit_energy)
 val_photons_time_tensor = torch.FloatTensor(val_photons_time)
 
+test_electrons_hit_energy_tensor = torch.FloatTensor(test_electrons_hit_energy)
+test_electrons_time_tensor = torch.FloatTensor(test_electrons_time)
+test_photons_hit_energy_tensor = torch.FloatTensor(test_photons_hit_energy)
+test_photons_time_tensor = torch.FloatTensor(test_photons_time)
+
 # Concatenate hit energy and time matrices along the channel dimension
 train_electrons_data = torch.stack((train_electrons_hit_energy_tensor, train_electrons_time_tensor), dim=1)
 train_photons_data = torch.stack((train_photons_hit_energy_tensor, train_photons_time_tensor), dim=1)
@@ -77,17 +87,23 @@ train_photons_data = torch.stack((train_photons_hit_energy_tensor, train_photons
 val_electrons_data = torch.stack((val_electrons_hit_energy_tensor, val_electrons_time_tensor), dim=1)
 val_photons_data = torch.stack((val_photons_hit_energy_tensor, val_photons_time_tensor), dim=1)
 
+test_electrons_data = torch.stack((test_electrons_hit_energy_tensor, test_electrons_time_tensor), dim=1)
+test_photons_data = torch.stack((test_photons_hit_energy_tensor, test_photons_time_tensor), dim=1)
+
 # Combine electrons and photons data into one tensor
 train_data = torch.cat((train_electrons_data, train_photons_data), dim=0)
 val_data = torch.cat((val_electrons_data, val_photons_data), dim=0)
+test_data = torch.cat((test_electrons_data, test_photons_data), dim=0)
 
 # Create labels (0 for electrons, 1 for photons)
 train_labels = torch.cat((torch.zeros(train_electrons_data.size(0)), torch.ones(train_photons_data.size(0))))
 val_labels = torch.cat((torch.zeros(val_electrons_data.size(0)), torch.ones(val_photons_data.size(0))))
+test_labels = torch.cat((torch.zeros(test_electrons_data.size(0)), torch.ones(test_photons_data.size(0))))
 
 # Create TensorDataset and DataLoader
 train_dataset = TensorDataset(train_data, train_labels)
 val_dataset = TensorDataset(val_data, val_labels)
+test_dataset = TensorDataset(test_data, test_labels)
 
 # Define aggressive data augmentations
 transformations = transforms.Compose([
@@ -100,15 +116,10 @@ transformations = transforms.Compose([
     ])], p=0.8)
 ])
 
-# Apply transformations to datasets
-train_dataset.transform = transformations
-val_dataset.transform = transformations
-
 batch_size = 32
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 class ResNet15(nn.Module):
     def __init__(self):
         super(ResNet15, self).__init__()
@@ -146,7 +157,6 @@ class ResNet15(nn.Module):
 model = ResNet15()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)  # Adding weight decay for regularization
-
 # Training loop
 num_epochs = 100
 train_losses = []
@@ -167,18 +177,14 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
         
-        train_loss += loss.item() * inputs.size(0)
+        train_loss += loss.item()
         _, predicted = torch.max(outputs, 1)
-        train_correct += (predicted == labels).sum().item()
         total_train += labels.size(0)
+        train_correct += (predicted == labels).sum().item()
     
-    train_loss = train_loss / total_train
-    train_accuracy = train_correct / total_train
+    train_losses.append(train_loss / len(train_loader))
+    train_accuracies.append(train_correct / total_train)
     
-    train_losses.append(train_loss)
-    train_accuracies.append(train_accuracy)
-    
-    # Validation
     val_loss = 0.0
     val_correct = 0
     total_val = 0
@@ -189,41 +195,62 @@ for epoch in range(num_epochs):
             outputs = model(inputs)
             loss = criterion(outputs, labels.long())
             
-            val_loss += loss.item() * inputs.size(0)
+            val_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
-            val_correct += (predicted == labels).sum().item()
             total_val += labels.size(0)
+            val_correct += (predicted == labels).sum().item()
     
-    val_loss = val_loss / total_val
-    val_accuracy = val_correct / total_val
+    val_losses.append(val_loss / len(val_loader))
+    val_accuracies.append(val_correct / total_val)
     
-    val_losses.append(val_loss)
-    val_accuracies.append(val_accuracy)
-    
-    print(f'Epoch [{epoch + 1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
+    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Train Accuracy: {train_accuracies[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
 
-# Plotting function
-def plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies):
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
-    plt.plot(train_losses, label='Train Loss', color='blue')
-    plt.plot(val_losses, label='Val Loss', color='orange')
-    plt.title('Training and Validation Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    
-    plt.subplot(1, 2, 2)
-    plt.plot(train_accuracies, label='Train Accuracy', color='green')
-    plt.plot(val_accuracies, label='Val Accuracy', color='red')
-    plt.title('Training and Validation Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.show()
+# Save the model weights
+torch.save(model.state_dict(), 'resnet15_finetuned.pth')
 
-# Plot training and validation metrics
-plot_training_metrics(train_losses, train_accuracies, val_losses, val_accuracies)
+# Plot training loss and validation accuracy
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+plt.plot(range(num_epochs), train_losses, label='Train Loss')
+plt.plot(range(num_epochs), val_losses, label='Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(range(num_epochs), train_accuracies, label='Train Accuracy')
+plt.plot(range(num_epochs), val_accuracies, label='Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.show()
+# Evaluate on test data
+model.eval()
+test_correct = 0
+total_test = 0
+test_predictions = []
+test_targets = []
+
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        outputs = model(inputs)
+        _, predicted = torch.max(outputs, 1)
+        
+        total_test += labels.size(0)
+        test_correct += (predicted == labels).sum().item()
+        
+        test_predictions.extend(predicted.cpu().numpy())
+        test_targets.extend(labels.cpu().numpy())
+
+test_accuracy = test_correct / total_test
+print(f'Test Accuracy: {test_accuracy:.4f}')
+
+# Calculate confusion matrix and other metrics
+from sklearn.metrics import classification_report, confusion_matrix
+
+print("Confusion Matrix:")
+print(confusion_matrix(test_targets, test_predictions))
+print("\nClassification Report:")
+print(classification_report(test_targets, test_predictions, target_names=["Electron", "Photon"]))
 
