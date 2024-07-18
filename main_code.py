@@ -253,4 +253,43 @@ print("Confusion Matrix:")
 print(confusion_matrix(test_targets, test_predictions))
 print("\nClassification Report:")
 print(classification_report(test_targets, test_predictions, target_names=["Electron", "Photon"]))
+print("This is the code for the Testing ")
+import random
 
+# Function to generate random test cases
+def generate_random_test_cases(num_cases, img_size=32):
+    test_cases = []
+    labels = []
+    for _ in range(num_cases):
+        # Randomly select electron or photon
+        is_photon = random.choice([True, False])
+        
+        if is_photon:
+            photons_hit_energy = np.random.rand(img_size, img_size)
+            photons_time = np.random.rand(img_size, img_size)
+            test_cases.append(np.stack((photons_hit_energy, photons_time), axis=0))
+            labels.append(1)  
+        else:
+            electrons_hit_energy = np.random.rand(img_size, img_size)
+            electrons_time = np.random.rand(img_size, img_size)
+            test_cases.append(np.stack((electrons_hit_energy, electrons_time), axis=0))
+            labels.append(0) 
+    return np.array(test_cases), np.array(labels)
+
+num_test_cases = 10
+test_inputs, test_labels = generate_random_test_cases(num_test_cases)
+
+test_inputs_tensor = torch.FloatTensor(test_inputs)
+
+model.eval()
+with torch.no_grad():
+    outputs = model(test_inputs_tensor)
+    _, predicted = torch.max(outputs, 1)
+
+predicted_labels = predicted.cpu().numpy()
+for i in range(num_test_cases):
+    particle_type = "Photon" if predicted_labels[i] == 1 else "Electron"
+    true_type = "Photon" if test_labels[i] == 1 else "Electron"
+    print(f"Test Case {i+1}: Predicted: {particle_type}, True Label: {true_type}")
+
+print("The code ends here ")
