@@ -18,17 +18,13 @@ def generate_random_matrices(num_samples, img_size=32):
     
     return electrons_hit_energy, electrons_time, photons_hit_energy, photons_time
 
-# Number of datasets to generate
-num_datasets = 1000  # Reduced for demonstration
+num_datasets = 1000  
 num_samples_per_dataset = 1
-
-# Lists to store all generated matrices
 all_electrons_hit_energy = []
 all_electrons_time = []
 all_photons_hit_energy = []
 all_photons_time = []
 
-# Generate datasets
 for _ in range(num_datasets):
     electrons_hit_energy, electrons_time, photons_hit_energy, photons_time = generate_random_matrices(num_samples_per_dataset)
     all_electrons_hit_energy.append(electrons_hit_energy)
@@ -89,23 +85,31 @@ val_photons_data = torch.stack((val_photons_hit_energy_tensor, val_photons_time_
 
 test_electrons_data = torch.stack((test_electrons_hit_energy_tensor, test_electrons_time_tensor), dim=1)
 test_photons_data = torch.stack((test_photons_hit_energy_tensor, test_photons_time_tensor), dim=1)
-
-# Combine electrons and photons data into one tensor
 train_data = torch.cat((train_electrons_data, train_photons_data), dim=0)
 val_data = torch.cat((val_electrons_data, val_photons_data), dim=0)
 test_data = torch.cat((test_electrons_data, test_photons_data), dim=0)
 
-# Create labels (0 for electrons, 1 for photons)
 train_labels = torch.cat((torch.zeros(train_electrons_data.size(0)), torch.ones(train_photons_data.size(0))))
 val_labels = torch.cat((torch.zeros(val_electrons_data.size(0)), torch.ones(val_photons_data.size(0))))
 test_labels = torch.cat((torch.zeros(test_electrons_data.size(0)), torch.ones(test_photons_data.size(0))))
 
-# Create TensorDataset and DataLoader
-train_dataset = TensorDataset(train_data, train_labels)
-val_dataset = TensorDataset(val_data, val_labels)
-test_dataset = TensorDataset(test_data, test_labels)
+from torch.utils.data import Dataset, DataLoader
+class AugmentedDataset(Dataset):
+    def __init__(self, data, labels, transform=None):
+        self.data = data
+        self.labels = labels
+        self.transform = transform
 
-# Define aggressive data augmentations
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        image = self.data[idx]
+        label = self.labels[idx]
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+
 transformations = transforms.Compose([
     RandomApply([RandomChoice([
         RandomRotation(15),
@@ -116,10 +120,16 @@ transformations = transforms.Compose([
     ])], p=0.8)
 ])
 
+train_dataset = AugmentedDataset(train_data, train_labels, transform=transformations)
+val_dataset = AugmentedDataset(val_data, val_labels, transform=None)
+test_dataset = AugmentedDataset(test_data, test_labels, transform=None)
+
 batch_size = 32
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+
 class ResNet15(nn.Module):
     def __init__(self):
         super(ResNet15, self).__init__()
@@ -157,7 +167,6 @@ class ResNet15(nn.Module):
 model = ResNet15()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)  # Adding weight decay for regularization
-# Training loop
 num_epochs = 100
 train_losses = []
 train_accuracies = []
@@ -205,7 +214,6 @@ for epoch in range(num_epochs):
     
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Train Accuracy: {train_accuracies[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
 
-# Save the model weights
 torch.save(model.state_dict(), 'resnet15_finetuned.pth')
 
 # Plot training loss and validation accuracy
@@ -245,8 +253,6 @@ with torch.no_grad():
 
 test_accuracy = test_correct / total_test
 print(f'Test Accuracy: {test_accuracy:.4f}')
-
-# Calculate confusion matrix and other metrics
 from sklearn.metrics import classification_report, confusion_matrix
 
 print("Confusion Matrix:")
@@ -255,13 +261,10 @@ print("\nClassification Report:")
 print(classification_report(test_targets, test_predictions, target_names=["Electron", "Photon"]))
 print("This is the code for the Testing ")
 import random
-
-# Function to generate random test cases
 def generate_random_test_cases(num_cases, img_size=32):
     test_cases = []
     labels = []
     for _ in range(num_cases):
-        # Randomly select electron or photon
         is_photon = random.choice([True, False])
         
         if is_photon:
