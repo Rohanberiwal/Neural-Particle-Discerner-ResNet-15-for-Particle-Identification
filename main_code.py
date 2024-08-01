@@ -7,6 +7,14 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
 import torchvision.transforms as transforms
 from torchvision.transforms import RandomApply, RandomChoice, RandomRotation, RandomHorizontalFlip, RandomVerticalFlip, RandomAffine, RandomGrayscale
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader, Subset
+from sklearn.model_selection import KFold
+import numpy as np
+from torchvision import transforms
+from torchvision.transforms import RandomApply, RandomChoice, RandomRotation, RandomHorizontalFlip, RandomVerticalFlip, RandomAffine, RandomGrayscale
 
 # Function to generate random matrices
 def generate_random_matrices(num_samples, img_size=32):
@@ -96,8 +104,8 @@ test_labels = torch.cat((torch.zeros(test_electrons_data.size(0)), torch.ones(te
 from torch.utils.data import Dataset, DataLoader
 class AugmentedDataset(Dataset):
     def __init__(self, data, labels, transform=None):
-        self.data = data
-        self.labels = labels
+        self.data = torch.tensor(data, dtype=torch.float32)  # Convert to PyTorch tensor
+        self.labels = torch.tensor(labels, dtype=torch.long)  # Convert to PyTorch tensor
         self.transform = transform
 
     def __len__(self):
@@ -168,66 +176,116 @@ model = ResNet15()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5) 
 optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-
-
-lambda_l1 = 1e-4 
+lambda_l1 = 1e-4
 def l1_regularization(model, lambda_l1):
     l1_loss = 0
     for param in model.parameters():
         l1_loss += torch.sum(torch.abs(param))
     return lambda_l1 * l1_loss
 
-num_epochs = 100
-train_losses = []
-train_accuracies = []
-val_losses = []
-val_accuracies = []
-for epoch in range(num_epochs):
-    train_loss = 0.0
-    train_correct = 0
-    total_train = 0
+# Prepare dataset (replace with your actual data)
+X = np.array(train_data)  # Your training data
+y = np.array(train_labels)  # Your training labels
+
+# K-Fold Cross-Validation
+k = 5
+kf = KFold(n_splits=k, shuffle=True, random_state=42)
+
+fold_results = []
+for fold, (train_indices, val_indices) in enumerate(kf.split(X)):
+    print(f"Fold {fold + 1}")
     
-    model.train()
-    for inputs, labels in train_loader:
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels.long())
-        l1_loss = l1_regularization(model, lambda_l1)
-        total_loss = loss + l1_loss
+    # Create train and validation subsets
+    train_data_fold = X[train_indices]
+    train_labels_fold = y[train_indices]
+    val_data_fold = X[val_indices]
+    val_labels_fold = y[val_indices]
+    
+    # Create datasets and dataloaders for the current fold
+    train_dataset = AugmentedDataset(train_data_fold, train_labels_fold, transform=transformations)
+    val_dataset = AugmentedDataset(val_data_fold, val_labels_fold, transform=None)
+    
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    
+    # Initialize model, criterion, and optimizer
+    model = ResNet15()
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+    
+    num_epochs = 100
+    train_losses = []
+    train_accuracies = []
+    val_losses = []
+    val_accuracies = []
+    lambda_l1 = 1e-5  # Set L1 regularization parameter
+    
+    for epoch in range(num_epochs):
+        train_loss = 0.0
+        train_correct = 0
+        total_train = 0
         
-        total_loss.backward()
-        optimizer.step()
-        
-        train_loss += total_loss.item()
-        _, predicted = torch.max(outputs, 1)
-        total_train += labels.size(0)
-        train_correct += (predicted == labels).sum().item()
-    
-    train_losses.append(train_loss / len(train_loader))
-    train_accuracies.append(train_correct / total_train)
-    
-    val_loss = 0.0
-    val_correct = 0
-    total_val = 0
-    
-    model.eval()
-    with torch.no_grad():
-        for inputs, labels in val_loader:
+        model.train()
+        for inputs, labels in train_loader:
+            optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels.long())
-            val_loss += loss.item()
+            l1_loss = l1_regularization(model, lambda_l1)
+            total_loss = loss + l1_loss
+            
+            total_loss.backward()
+            optimizer.step()
+            
+            train_loss += total_loss.item()
             _, predicted = torch.max(outputs, 1)
-            total_val += labels.size(0)
-            val_correct += (predicted == labels).sum().item()
-    
-    val_losses.append(val_loss / len(val_loader))
-    val_accuracies.append(val_correct / total_val)
-    
-    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Train Accuracy: {train_accuracies[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
+            total_train += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
+        
+        train_losses.append(train_loss / len(train_loader))
+        train_accuracies.append(train_correct / total_train)
+        
+        val_loss = 0.0
+        val_correct = 0
+        total_val = 0
+        
+        model.eval()
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels.long())
+                l1_loss = l1_regularization(model, lambda_l1)
+                val_loss += (loss + l1_loss).item()
+                _, predicted = torch.max(outputs, 1)
+                total_val += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
+        
+        val_losses.append(val_loss / len(val_loader))
+        val_accuracies.append(val_correct / total_val)
+        
+        print(f"Epoch [{epoch+1}/{num_epochs}], "
+              f"Train Loss: {train_losses[-1]:.4f}, Train Accuracy: {train_accuracies[-1]:.4f}, "
+              f"Val Loss: {val_losses[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
 
-torch.save(model.state_dict(), 'resnet15_finetuned.pth')
+    # Store results for this fold
+    fold_results.append({
+        'train_loss': np.mean(train_losses),
+        'train_accuracy': np.mean(train_accuracies),
+        'val_loss': np.mean(val_losses),
+        'val_accuracy': np.mean(val_accuracies)
+    })
 
-# Plot training loss and validation accuracy
+    # Save the model for this fold
+    torch.save(model.state_dict(), f'resnet15_fold_{fold + 1}.pth')
+avg_train_loss = np.mean([result['train_loss'] for result in fold_results])
+avg_train_accuracy = np.mean([result['train_accuracy'] for result in fold_results])
+avg_val_loss = np.mean([result['val_loss'] for result in fold_results])
+avg_val_accuracy = np.mean([result['val_accuracy'] for result in fold_results])
+
+print(f"Average Training Loss: {avg_train_loss:.4f}")
+print(f"Average Training Accuracy: {avg_train_accuracy:.4f}")
+print(f"Average Validation Loss: {avg_val_loss:.4f}")
+print(f"Average Validation Accuracy: {avg_val_accuracy:.4f}")
+
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
 plt.plot(range(num_epochs), train_losses, label='Train Loss')
