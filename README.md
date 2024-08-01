@@ -1,25 +1,41 @@
-# Electron/Photon Classification Using ResNet-15
+# Particle Classification with ResNet15
+
+This repository contains code for training and evaluating a custom ResNet15 model for classifying particle types based on their hit energy and time matrices. The particles are classified into two categories: Electrons and Photons. The code includes data generation, preprocessing, model definition, training with cross-validation, and evaluation.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Requirements](#requirements)
+3. [Data Generation](#data-generation)
+4. [Data Preprocessing](#data-preprocessing)
+5. [Model Definition](#model-definition)
+6. [Training and Validation](#training-and-validation)
+7. [Testing](#testing)
+8. [How to Use](#how-to-use)
+9. [Results](#results)
+10. [License](#license)
 
 ## Overview
 
-This project aims to classify electrons and photons using a deep learning model based on the ResNet-15 architecture. The classification is performed on 32x32 matrices representing two channels: hit energy and time for two types of particles, electrons and photons, hitting the detector. The datasets are provided by CERN and are used by the ML4Sci organization.
+The code is designed to:
 
-## Dataset Description
+- Generate synthetic data representing hit energy and time matrices for Electrons and Photons.
+- Preprocess and augment the data.
+- Define and train a custom ResNet15 model with L1 regularization.
+- Perform k-fold cross-validation to evaluate the model's performance.
+- Evaluate the model on a separate test dataset and generate predictions for random test cases.
 
-- **Photon Dataset**: [Photon Data](https://cernbox.cern.ch/index.php/s/AtBT8y4MiQYFcgc)
-- **Electron Dataset**: [Electron Data](https://cernbox.cern.ch/index.php/s/FbXw3V4XNyYB3oA)
+## Requirements
 
-Each dataset consists of 32x32 matrices with two channels: hit energy and time.
+To run this code, you need:
 
-## Project Requirements
+- Python 3.x
+- PyTorch
+- NumPy
+- scikit-learn
+- Matplotlib
 
-- Use a ResNet-15 model architecture (modifiable).
-- Achieve the highest possible classification score.
-- Train the model on 80% of the data.
-- Evaluate the model on the remaining 20%.
-- Avoid overfitting on the test dataset.
+You can install the required libraries using pip:
 
-## Model Architecture
-
-The ResNet-15 architecture used in this project is a modified version of the ResNet model. 
-
+```bash
+pip install torch numpy scikit-learn matplotlib
