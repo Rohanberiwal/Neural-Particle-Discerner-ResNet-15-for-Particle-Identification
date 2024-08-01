@@ -163,16 +163,25 @@ class ResNet15(nn.Module):
         
         return x
 
-# Initialize model, criterion, and optimizer
+
 model = ResNet15()
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)  # Adding weight decay for regularization
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5) 
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+
+
+lambda_l1 = 1e-4 
+def l1_regularization(model, lambda_l1):
+    l1_loss = 0
+    for param in model.parameters():
+        l1_loss += torch.sum(torch.abs(param))
+    return lambda_l1 * l1_loss
+
 num_epochs = 100
 train_losses = []
 train_accuracies = []
 val_losses = []
 val_accuracies = []
-
 for epoch in range(num_epochs):
     train_loss = 0.0
     train_correct = 0
@@ -183,10 +192,13 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = criterion(outputs, labels.long())
-        loss.backward()
+        l1_loss = l1_regularization(model, lambda_l1)
+        total_loss = loss + l1_loss
+        
+        total_loss.backward()
         optimizer.step()
         
-        train_loss += loss.item()
+        train_loss += total_loss.item()
         _, predicted = torch.max(outputs, 1)
         total_train += labels.size(0)
         train_correct += (predicted == labels).sum().item()
@@ -203,7 +215,6 @@ for epoch in range(num_epochs):
         for inputs, labels in val_loader:
             outputs = model(inputs)
             loss = criterion(outputs, labels.long())
-            
             val_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
             total_val += labels.size(0)
